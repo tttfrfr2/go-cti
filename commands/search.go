@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 
 	"github.com/inconshreveable/log15"
@@ -29,10 +28,12 @@ var (
 func init() {
 	RootCmd.AddCommand(searchCmd)
 
-	searchCmd.PersistentFlags().String("param", "", "All Metasploit Framework modules: None by CVE: [CVE-xxxx-xxxx] or [CVE-xxxx-xxxxx]")
-	if err := viper.BindPFlag("param", searchCmd.PersistentFlags().Lookup("param")); err != nil {
-		panic(err)
-	}
+	searchCmd.PersistentFlags().String("type", "", "All Metasploit Framework modules by CVE: CVE  |  by EDB: EDB (default: CVE)")
+	_ = viper.BindPFlag("type", searchCmd.PersistentFlags().Lookup("type"))
+	viper.SetDefault("type", "CVE")
+
+	searchCmd.PersistentFlags().String("param", "", "All Metasploit Framework modules: None  |  by CVE: [CVE-xxxx]  | by EDB: [EDB-xxxx]  (default: None)")
+	_ = viper.BindPFlag("param", searchCmd.PersistentFlags().Lookup("param"))
 	viper.SetDefault("param", "")
 }
 
@@ -50,14 +51,14 @@ func searchCti(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	param := viper.GetString("param")
-	if !cveIDRegexp.Match([]byte(param)) {
-		log15.Error("Specify the search parameters like `--param CVE-xxxx-xxxx` or `--param CVE-xxxx-xxxxx`")
+	if !cveIDRegexp.MatchString(param) {
+		log15.Error("Specify the search parameters like `--param CVE-xxxx-xxxx`")
 		return errors.New("Invalid CVE Param")
 	}
 	results := driver.GetModuleByCveID(param)
 	if len(results) == 0 {
-		log15.Error(fmt.Sprintf("No results of CVE which ID is %s", param))
-		return errors.New("No results")
+		log15.Info(fmt.Sprintf("No results of CVE which ID is %s", param))
+		return nil
 	}
 	log15.Info("Get results")
 	resultsByteData, err := json.Marshal(results)
@@ -65,22 +66,6 @@ func searchCti(cmd *cobra.Command, args []string) (err error) {
 		return fmt.Errorf("Failed to marshal :%s", err)
 	}
 	log15.Info("Output as JSON")
-	if err := outputJSON(fmt.Sprintf("%s.json", param), resultsByteData); err != nil {
-		return fmt.Errorf("Failed to output :%s", err)
-	}
-	return nil
-}
-
-func outputJSON(filename string, binaryData []byte) error {
-	file, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	_, err = file.Write(binaryData)
-	if err != nil {
-		return err
-	}
+	fmt.Printf("%s\n", string(resultsByteData))
 	return nil
 }
